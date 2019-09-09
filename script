@@ -1,0 +1,370 @@
+
+id
+HOME=$(grep $(whoami) /etc/passwd|cut -d: -f6)
+cd
+pwd
+echo "=============================================================="
+echo "Install Rails 5.2.2 & Ruby 2.5.3 server environment As $(whoami) user"
+echo "-------------------------------- $(tput setaf 0)"
+
+# Define my variables
+export deployer_user="deploy"
+export domain="domian.com"
+export app_name="app_name"
+export db_user="postgres"
+export db_name="app_db_name"
+export shared_folder_path="/home/$deployer_user/$app_name/shared"
+
+echo -e "\n$(tput setaf 1)###### Update apt ###### $(tput setaf 0)"
+apt-get update
+
+# Create deployer user if it not found
+if grep "$deployer_user" /etc/passwd
+then
+	echo -e "\n$(tput setaf 1) $deployer_user user already exist: use su $deployer_user to login with it $(tput setaf 0)"
+else
+	echo -e "\n$(tput setaf 1)###### Add $deployer_user user ###### $(tput setaf 0)"
+#osama
+#	sudo useradd "$deployer_user"
+         useradd -d /home/$deployer_user $deployer_user
+	adduser "$deployer_user" sudo
+
+	echo -e "\n$(tput setaf 1)###### Checking $deployer_user user ###### $(tput setaf 0)"
+	tail -n 1 /etc/passwd
+fi
+
+	echo -e "\n$(tput setaf 1)###### Install Git ###### $(tput setaf 0)"
+	sudo apt-get install git
+
+	echo -e "\n$(tput setaf 1)###### Checking Git version ###### $(tput setaf 0)"
+	git version
+
+	echo -e "\n$(tput setaf 1)###### Install Rbenv ###### $(tput setaf 0)"
+#osama
+#	cd
+cd $(grep $(whoami) /etc/passwd|cut -d: -f6)
+	git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+	echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
+#osama
+       export PATH="$HOME/.rbenv/bin:$PATH"
+	echo 'eval "$(rbenv init -)"' >> ~/.bashrc
+#osama
+eval "$(rbenv init -)"
+
+	git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+	echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' >> ~/.bashrc
+	source ~/.bashrc
+     pwd
+echo -e "\n$(tput setaf 1)###### Checking the Rbenv  version ###### $(tput setaf 0)"
+	rbenv -v
+
+	echo -e "\n$(tput setaf 1)###### Installing Ruby 2.5.3 ###### $(tput setaf 0)"
+	sudo apt-get install -y build-essential libssl-dev libreadline-dev zlib1g-dev
+	sudo apt-get install -y libyaml-dev libxml2-dev libxslt1-dev libcurl4-openssl-dev
+	sudo apt-get install -y software-properties-common libffi-dev yarn libmagickwand-dev
+
+#osama commented temp for speed
+#	rbenv install -f 2.5.3
+	rbenv global  2.5.3
+
+	echo -e "\n$(tput setaf 1)###### Checking Ruby versions  ###### $(tput setaf 0)"
+	rbenv versions
+
+	echo -e "\n$(tput setaf 1)###### Checking Ruby Global version  ###### $(tput setaf 0)"
+	ruby -v
+
+	echo -e "\n$(tput setaf 1)###### Installing NodeJS  ###### $(tput setaf 0)"
+	sudo apt-get install nodejs -y
+	echo -e "\n$(tput setaf 1)###### Checking NodeJs version  ###### $(tput setaf 0)"
+	nodejs -v
+
+	echo -e "\n$(tput setaf 1)###### Installing Bundler ###### $(tput setaf 0)"
+	# disable parsing gem documentation
+	echo "gem: --no-document" > ~/.gemrc
+	#gem uninstall bundler
+	gem install bundler -v 1.17.3
+	gem install bundler
+
+	echo -e "\n$(tput setaf 1)###### Checking Gem version ###### $(tput setaf 0)"
+	gem -v
+
+	echo -e "\n$(tput setaf 1)###### List installed Bundlers ###### $(tput setaf 0)"
+	gem list | grep bundler
+
+	echo -e "\n$(tput setaf 1)###### Checking default Bundler version ###### $(tput setaf 0)"
+	bundler -v
+
+	echo -e "\n$(tput setaf 1)###### Installing Rails ###### $(tput setaf 0)"
+	gem install rails -v 5.2.2
+	rbenv rehash
+
+	echo -e "\n$(tput setaf 1)###### Checking Rails version ###### $(tput setaf 0)"
+	rails -v
+
+	echo -e "\n$(tput setaf 1)###### Install Nginx & Passenger  ###### $(tput setaf 0)"
+
+	sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 561F9B9CAC40B2F7
+	sudo apt-get install -y apt-transport-https ca-certificates
+
+	# Add Passenger APT repository
+#osama
+#	sudo sh -c 'echo deb https://oss-binaries.phusionpassenger.com/apt/passenger xenial main > /etc/apt/sources.list.d/passenger.list'
+	sudo apt-get update
+
+	# Install Passenger & Nginx
+#osama
+sed -i  's/^\([^#]\)/#\1/g' /etc/apt/sources.list.d/passenger.list
+ cat /etc/apt/sources.list.d/passenger.list
+apt-get update
+	sudo apt-get install -y nginx-extras passenger
+	sudo service nginx start
+echo "Allow ports 80 and 4430"
+ufw allow 80
+ufw allow 4430
+
+
+# default -> /etc/nginx/sites-available/default
+	# Config nginx: sudo vim /etc/nginx/sites-enabled/default
+	nginx_default="server {
+	    listen 80;
+	    listen [::]:80 ipv6only=on;
+	    # SSL configuration
+	    #
+	    # listen 443 ssl default_server;
+	    # listen [::]:443 ssl default_server;
+	    server_name $domain;
+	    passenger_enabled on;
+	    rails_env    production;
+	    root         /home/$deployer_user/$app_name/current/public;
+	    # redirect server error pages to the static page /50x.html
+	    error_page   500 502 503 504  /50x.html;
+	    location = /50x.html {
+	      root   html;
+	    }
+	}"
+
+	touch "/home/$deployer_user/default"
+	sudo echo "$nginx_default" > "/home/$deployer_user/default"
+	sudo mv "/home/$deployer_user/default" /etc/nginx/sites-available/default
+
+	# Config nginx: sudo vim /etc/nginx/nginx.conf by Uncomment this line: include /etc/nginx/passenger.conf;
+	sudo sh -c 'echo "
+    user www-data;
+    worker_processes auto;
+    pid /run/nginx.pid;
+    events {
+      worker_connections 768;
+      # multi_accept on;
+    }
+	  http {
+		  ##
+		  # Basic Settings
+		  ##
+		  sendfile on;
+		  tcp_nopush on;
+		  tcp_nodelay on;
+		  keepalive_timeout 65;
+		  types_hash_max_size 2048;
+		  # server_tokens off;
+		  # server_names_hash_bucket_size 64;
+		  # server_name_in_redirect off;
+		  include /etc/nginx/mime.types;
+		  default_type application/octet-stream;
+		  ##
+		  # SSL Settings
+		  ##
+		  ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE
+		  ssl_prefer_server_ciphers on;
+		  ##
+		  # Logging Settings
+		  ##
+		  access_log /var/log/nginx/access.log;
+		  error_log /var/log/nginx/error.log;
+		  ##
+		  # Gzip Settings
+		  ##
+		  gzip on;
+		  gzip_disable "msie6";
+		  # gzip_vary on;
+		  # gzip_proxied any;
+		  # gzip_comp_level 6;
+		  # gzip_buffers 16 8k;
+		  # gzip_http_version 1.1;
+		  # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+		  ##
+		  # Phusion Passenger config
+		  ##
+		  # Uncomment it if you installed passenger or passenger-enterprise
+		  ##
+		  include /etc/nginx/passenger.conf;
+		  ##
+		  # Virtual Host Configs
+		  ##
+		  include /etc/nginx/conf.d/*.conf;
+		  include /etc/nginx/sites-enabled/*;
+		}
+		# mail {
+		# # See sample authentication script at:
+		# # http://wiki.nginx.org/ImapAuthenticateWithApachePhpScript
+		#
+		# # auth_http localhost/auth.php;
+		# # pop3_capabilities "TOP" "USER";
+		# # imap_capabilities "IMAP4rev1" "UIDPLUS";
+		#
+		# server {
+		# 	listen     localhost:110;
+		#   protocol   pop3;
+		#   proxy      on;
+		# }
+		#
+		# server {
+		#  	listen     localhost:143;
+		#  	protocol   imap;
+		#  	proxy      on;
+		#  }
+		#}
+	" > /etc/nginx/nginx.conf'
+
+	# Config nginx: sudo vim /etc/nginx/passenger.conf by Replace passenger_ruby line with this one passenger_ruby /home/deployer/.rbenv/shims/ruby;
+	nginx_passenger="
+	passenger_root /usr/lib/ruby/vendor_ruby/phusion_passenger/locations.ini;
+	# passenger_ruby /usr/bin/passenger_free_ruby;
+	passenger_ruby /home/$deployer_user/.rbenv/shims/ruby;"
+
+	touch "/home/$deployer_user/passenger.conf"
+	sudo echo "$nginx_passenger" > "/home/$deployer_user/passenger.conf"
+	sudo mv "/home/$deployer_user/passenger.conf" /etc/nginx/passenger.conf
+
+  # Checking nginx # if fail dubeg using: sudo journalctl -xe
+  sudo service nginx configtest
+	# restart nginx
+	sudo service nginx restart
+
+	echo -e "\n$(tput setaf 1)###### Checking Nginx version ###### $(tput setaf 0)"
+	nginx -v
+
+	echo -e "\n$(tput setaf 1)###### Checking Nginx status  ###### $(tput setaf 0)"
+	sudo service nginx status
+
+
+
+
+	echo -e "\n$(tput setaf 1)###### Create app folders  ###### $(tput setaf 0)"
+	mkdir "/home/$deployer_user/$app_name"
+	mkdir "$shared_folder_path"
+	mkdir "$shared_folder_path/config"
+	mkdir "$shared_folder_path/log"
+	mkdir "$shared_folder_path/tmp"
+	mkdir "$shared_folder_path/tmp/pids"
+	mkdir "$shared_folder_path/tmp/cache"
+	mkdir "$shared_folder_path/tmp/sockets"
+	mkdir "$shared_folder_path/vendor"
+	mkdir "$shared_folder_path/vendor/bundle"
+	mkdir "$shared_folder_path/public/system"
+	mkdir "$shared_folder_path/public/uploads"
+	touch "$shared_folder_path/config/database.yml"
+	touch "$shared_folder_path/config/secrets.yml"
+	touch "$shared_folder_path/.env"
+
+	env_credentials="
+	FMS_DB=
+	FMS_DB_USERNAME=
+	FMS_DB_PASSWORD=
+	POSTGRES_HOST=localhost
+	RAILS_ENV=production
+	SECRET_KEY_BASE=
+	URL="	
+	sudo echo "$env_credentials" > "$shared_folder_path/.env"
+
+	database_credentials="
+	production:
+	  adapter: postgresql
+	  host: 127.0.0.1
+	  database: '<%= ENV['FMS_DB'] %>'
+	  username: '<%= ENV['FMS_DB_USERNAME'] %>'
+	  password: '<%= ENV['FMS_DB_PASSWORD'] %>'
+	  encoding: unicode
+	  pool: 5
+	"
+	sudo echo "$database_credentials" > "$shared_folder_path/config/database.yml"
+
+	secrets_credentials="
+	production:
+	  secret_key_base: <%= ENV["SECRET_KEY_BASE"] %>
+	"
+	sudo echo "$secrets_credentials" > "$shared_folder_path/config/secrets.yml"
+
+	echo -e "\n$(tput setaf 1)###### Install PostgreSQL  ###### $(tput setaf 0)"
+	sudo apt-get install postgresql postgresql-contrib libpq-dev -y
+
+	echo -e "\n$(tput setaf 1)###### Checking PostgreSQL version ###### $(tput setaf 0)"
+	pg_config --version
+
+	echo -e "\n$(tput setaf 1)###### Checking PostgreSQL status  ###### $(tput setaf 0)"
+	sudo service postgresql status
+
+	echo -e "\n$(tput setaf 1)###### Summary  ###### $(tput setaf 0)"
+	git version
+	rbenv -v
+	ruby -v
+	nodejs -v
+	bundler -v
+	gem -v
+echo "hhhhhhhhhhhhhhhhhhhhhhh"
+rails -v
+which rails
+echo $PATH
+echo $db_user
+echo "hhhhhhhhhhhhhhhhhhhhhhh"
+
+	nginx -v
+
+	pg_config --version
+
+	# Create postgres user if it not the postgres
+
+	if grep not "$db_user" /etc/passwd
+	then
+		echo -e "\n$(tput setaf 1)###### Create Linux PostgreSQL user  ###### $(tput setaf 0)"
+		sudo adduser "$db_user"
+
+		echo -e "\n$(tput setaf 1)###### Checking postgres user ###### $(tput setaf 0)"
+		tail -n 1 /etc/passwd
+	fi
+
+	# Login with the postgres user
+
+#	su "$db_user"
+
+
+# Check if it the postgres user
+echo "here"
+if [[ $(whoami) == "$db_user" ]]
+then
+
+	echo -e "\n$(tput setaf 1)###### Create DB user  ###### $(tput setaf 0)"
+	createuser --pwprompt "$deployer_user"
+
+	echo -e "\n$(tput setaf 1)###### Create DB  ###### $(tput setaf 0)"
+	# Delete DB
+	DROP DATABASE IF EXISTS $DB_Name
+	# Create DB
+	createdb -O "$deployer_user" "$db_name"
+
+	# echo -e "\n$(tput setaf 1)###### Check the default PostgreSQL DB user  ###### $(tput setaf 0)"
+	# psql
+	# \du
+	# \l
+	# \q
+
+	# Login as deployer linux user
+#	su "$deployer_user"
+fi
+
+
+# For digitalocean notifications
+sudo apt-get -y purge do-agent
+sudo apt-get -y install do-agent
+
+echo -e "\n$(tput setaf 21)###### Open on your browser $(dig +short myip.opendns.com @resolver1.opendns.com)  ###### $(tput setaf 0)"
+echo "=============================================================="
